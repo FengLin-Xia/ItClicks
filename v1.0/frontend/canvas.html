@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>It Clicks - 画布</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #fafafa;
+            color: #333;
+            line-height: 1.8;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin: 0;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            border-bottom: 1px solid #e5e5e5;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 400;
+            color: #333;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            padding-bottom: 180px; /* 为底部命令栏留空间 */
+        }
+
+        #editor {
+            width: 100%;
+            flex: 1;
+            padding: 40px;
+            border: none;
+            border-radius: 0;
+            font-size: 17px;
+            line-height: 2;
+            outline: none;
+            font-family: inherit;
+            background: #fafafa;
+            color: #2c2c2c;
+        }
+
+        #editor:focus {
+            outline: none;
+        }
+
+        .command-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 24px 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border-top: 1px solid #e5e5e5;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .hint-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 16px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .hint-input:focus {
+            border-color: #999;
+        }
+
+        .hint-input::placeholder {
+            color: #bbb;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #333;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        button:disabled {
+            background: #ddd;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #fff;
+            color: #333;
+            border: 1px solid #e5e5e5;
+        }
+
+        button.secondary:hover {
+            background: #f5f5f5;
+        }
+
+        .suggestion-card {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 600px;
+            width: 90%;
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.12);
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 200;
+        }
+
+        .suggestion-card.visible {
+            display: flex;
+        }
+
+        .suggestion-text {
+            font-size: 16px;
+            line-height: 2;
+            color: #2c2c2c;
+            padding: 16px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .suggestion-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            padding: 12px;
+            background: #fee;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .error.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo" onclick="goBack()">It Clicks</div>
+    </div>
+
+    <div class="main">
+        <div id="editor" contenteditable="true" placeholder="开始写作..."></div>
+
+        <div class="command-bar">
+            <input type="text" class="hint-input" id="hintInput" placeholder="可以只写一个名字或感觉">
+            <button onclick="continueText()" id="continueBtn">继续一段</button>
+            <button class="secondary" onclick="rewriteSelected()" id="rewriteBtn">改写选中</button>
+        </div>
+
+        <div class="suggestion-card" id="suggestionCard">
+            <div class="suggestion-text" id="suggestionText"></div>
+            <div class="suggestion-actions">
+                <button class="secondary" onclick="discardSuggestion()">放弃</button>
+                <button onclick="insertSuggestion()">插入到文末</button>
+            </div>
+        </div>
+
+        <div class="error" id="errorDisplay"></div>
+    </div>
+
+    <script>
+        const API_URL = '/api/generate';
+        const editor = document.getElementById('editor');
+        const hintInput = document.getElementById('hintInput');
+        const suggestionCard = document.getElementById('suggestionCard');
+        const suggestionText = document.getElementById('suggestionText');
+        const errorDisplay = document.getElementById('errorDisplay');
+        const continueBtn = document.getElementById('continueBtn');
+        const rewriteBtn = document.getElementById('rewriteBtn');
+
+        let currentSuggestion = '';
+        let isGenerating = false;
+
+        // 页面加载时从 localStorage 读取 seed
+        window.onload = function() {
+            const seed = localStorage.getItem('itclicks-seed');
+            if (seed) {
+                editor.textContent = seed;
+                // 光标定位到文末
+                moveCaretToEnd(editor);
+            }
+        };
+
+        // 光标移动到末尾（contenteditable）
+        function moveCaretToEnd(el) {
+            el.focus();
+            if (typeof window.getSelection != "undefined" && typeof document.createRange != "undefined") {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+
+        function goBack() {
+            window.location.href = '/';
+        }
+
+        function showError(message) {
+            errorDisplay.textContent = message;
+            errorDisplay.classList.add('visible');
+            setTimeout(() => {
+                errorDisplay.classList.remove('visible');
+            }, 3000);
+        }
+
+        function getAroundCursor(length = 400) {
+            const text = editor.textContent || '';
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return text;
+
+            const range = sel.getRangeAt(0);
+            const cursorPos = getCaretPosition(editor);
+
+            const start = Math.max(0, cursorPos - length);
+            const end = Math.min(text.length, cursorPos + length);
+
+            return text.substring(start, end);
+        }
+
+        function getTail(length = 150) {
+            const text = editor.textContent || '';
+            if (text.length <= length) return text;
+            return text.substring(text.length - length);
+        }
+
+        // 获取光标在 contenteditable 中的位置
+        function getCaretPosition(element) {
+            let caretOffset = 0;
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                const preCaretRange = range.cloneRange();
+                preCaretRange.selectNodeContents(element);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                caretOffset = preCaretRange.toString().length;
+            }
+            return caretOffset;
+        }
+
+        async function continueText() {
+            if (isGenerating) return;
+
+            const hint = hintInput.value.trim();
+            const aroundCursor = getAroundCursor();
+            const tail = getTail();
+
+            isGenerating = true;
+            continueBtn.disabled = true;
+            rewriteBtn.disabled = true;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'assist',
+                        op: 'continue',
+                        hint: hint,
+                        context: {
+                            selected: '',
+                            around_cursor: aroundCursor,
+                            tail: tail
+                        },
+                        state: { tone: 'restrained' }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 请求失败: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentSuggestion = data.text.trim();
+                suggestionText.textContent = currentSuggestion;
+                suggestionCard.classList.add('visible');
+
+                // 清空 hint
+                hintInput.value = '';
+
+            } catch (error) {
+                console.error('生成失败:', error);
+                showError('生成失败，请重试');
+            } finally {
+                isGenerating = false;
+                continueBtn.disabled = false;
+                rewriteBtn.disabled = false;
+            }
+        }
+
+        async function rewriteSelected() {
+            const sel = window.getSelection();
+            const selected = sel.toString().trim();
+
+            if (!selected) {
+                showError('请先选中要改写的文字');
+                return;
+            }
+
+            if (isGenerating) return;
+
+            isGenerating = true;
+            continueBtn.disabled = true;
+            rewriteBtn.disabled = true;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'assist',
+                        op: 'rewrite',
+                        hint: '',
+                        context: {
+                            selected: selected,
+                            around_cursor: '',
+                            tail: ''
+                        },
+                        state: { tone: 'restrained' }
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 请求失败: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentSuggestion = data.text.trim();
+                suggestionText.textContent = currentSuggestion;
+                suggestionCard.classList.add('visible');
+
+                // 保存选区以便后续替换
+                editor.dataset.replaceTarget = selected;
+
+            } catch (error) {
+                console.error('改写失败:', error);
+                showError('改写失败，请重试');
+            } finally {
+                isGenerating = false;
+                continueBtn.disabled = false;
+                rewriteBtn.disabled = false;
+            }
+        }
+
+        function insertSuggestion() {
+            if (!currentSuggestion) return;
+
+            // 检查是否是改写模式
+            const replaceTarget = editor.dataset.replaceTarget;
+
+            if (replaceTarget) {
+                // 改写模式：替换选中的文本
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    const found = range.cloneContents().textContent.includes(replaceTarget.substring(0, 20));
+                    if (!found) {
+                        // 如果当前选区不是原选区，搜索整个文档
+                        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
+                        let node;
+                        while (node = walker.nextNode()) {
+                            if (node.textContent.includes(replaceTarget.substring(0, 20))) {
+                                const newRange = document.createRange();
+                                newRange.setStart(node, 0);
+                                newRange.setEnd(node, node.textContent.length);
+                                newRange.deleteContents();
+                                const span = document.createElement('span');
+                                span.textContent = currentSuggestion;
+                                newRange.insertNode(span);
+                                break;
+                            }
+                        }
+                    } else {
+                        // 直接替换当前选区
+                        range.deleteContents();
+                        const span = document.createElement('span');
+                        span.textContent = currentSuggestion;
+                        range.insertNode(span);
+                    }
+                }
+                editor.dataset.replaceTarget = '';
+            } else {
+                // 继续模式：插入到光标位置
+                const sel = window.getSelection();
+                let newNode;
+
+                if (sel.rangeCount > 0) {
+                    newNode = document.createElement('div');
+                    newNode.innerHTML = '<br><br>' + currentSuggestion;
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(newNode);
+                } else {
+                    // 如果没有选区，直接追加到末尾
+                    newNode = document.createElement('div');
+                    newNode.innerHTML = '<br><br>' + currentSuggestion;
+                    editor.appendChild(newNode);
+                }
+            }
+
+            // 关闭建议卡片
+            discardSuggestion();
+
+            // 光标定位到插入文本后
+            editor.focus();
+            moveCaretToEnd(editor);
+        }
+
+        function discardSuggestion() {
+            currentSuggestion = '';
+            suggestionCard.classList.remove('visible');
+        }
+
+        // Ctrl/Cmd + Enter 提交
+        hintInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                continueText();
+            }
+        });
+    </script>
+</body>
+</html>

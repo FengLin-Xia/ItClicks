@@ -1,0 +1,83 @@
+2025-02-13 V1.1 数据库记录功能更新
+
+1. 新增 SQLite 数据库记录功能
+   - 数据库文件：./backend/logs/generation_logs.db
+   - 记录每次生成的完整数据：请求ID、时间戳、模式、操作、输入上下文、Writer输出、Critic评估、重试次数、最终结果、响应时间
+   - 新增 /api/log-action 端点，记录用户操作（插入/放弃）
+
+2. 后端代码修改
+   - 引入 sqlite3 依赖
+   - 在 server.js 中初始化数据库和表结构
+   - 在 /api/generate 接口中添加记录逻辑
+   - 新增 logGeneration 函数记录生成数据
+   - 新增 /api/log-action 端点记录用户操作
+
+3. 数据库表结构
+   - id: 主键
+   - request_id: 请求唯一标识
+   - timestamp: 时间戳
+   - mode: 生成模式（seed/relation_op）
+   - op: 操作类型（deepen/perspective/reveal）
+   - context_tail: 上下文尾部文本
+   - input_state: 输入的关系状态
+   - writer_raw: Writer原始输出
+   - writer_parsed: Writer解析后的JSON
+   - critic_pass: Critic是否通过（0/1）
+   - critic_issues: Critic指出的问题
+   - critic_hint: Critic修改建议
+   - retry_count: 重试次数
+   - final_text: 最终生成的文本
+   - final_state: 最终的关系状态
+   - user_action: 用户操作（insert/discard）
+   - response_time_ms: 响应时间（毫秒）
+
+4. 用途
+   - 分析 Prompt 效果
+   - 调优 Critic 标准
+   - 优化标签体系
+   - 追踪用户行为和操作偏好
+   - 统计生成速度和质量
+
+5. 注意事项
+   - 需要在 backend 目录下创建 logs 文件夹
+   - package.json 需要添加 sqlite3 依赖
+   - 前端需要调用 /api/log-action 记录用户操作
+
+6. 文件变更
+   - backend/server.js: 添加数据库初始化和记录逻辑
+   - backend/package.json: 添加 sqlite3 依赖
+
+---
+
+2025-02-13 V1.1 多轨道 Seed 生成系统更新
+
+1. 新增多轨道 Seed 生成系统
+   - 4 种 Seed 模式：relation（关系结构型）、semantic_gap（语义断层型）、boundary（边界逼近型）、daily_tension（日常张力型）
+   - 基础权重：relation: 35%, semantic_gap: 30%, boundary: 20%, daily_tension: 15%
+   - 动态权重调整，避免风格单一
+
+2. 权重调整规则
+   - 规则 1：禁止连续相同 mode（权重 × 0.3）
+   - 规则 2：语义断层防连发（semantic_gap 连续出现时权重 × 0.5）
+   - 规则 3：极性过高降温（最近 3 次 polarity ≥ 1 时，semantic_gap 和 boundary 降温，daily_tension 升温）
+   - 规则 4：极性过低升温（最近 3 次 polarity ≤ 0 时，semantic_gap 和 boundary 升温）
+
+3. Session 状态管理
+   - 内存存储最近 1 次 mode
+   - 内存存储最近 3 次 polarity
+   - 内存存储最近 3 条 seed 文本
+
+4. 各轨道 System Prompt
+   - relation: 强调对峙、偏爱、不对等、默契、口是心非
+   - semantic_gap: 制造强弱语义并置（危险行为 + 温和动作等）
+   - boundary: 暗示风险或代价，使用预判、赌、强撑等表达
+   - daily_tension: 用日常动作制造关系张力
+
+5. Critic 强化
+   - 额外检查：是否过度文学化、是否与上一条过于相似、是否缺乏关系结构
+   - 输出包含 style_flags 标记
+
+6. 文件变更
+   - backend/server.js: 添加多轨道系统、session 状态管理、权重调整逻辑、各轨道 Prompt
+
+

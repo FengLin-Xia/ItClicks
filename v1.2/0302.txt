@@ -1,0 +1,97 @@
+0302 记录
+
+一、Prompt Schema v1.0 文档整理
+
+1. 结构与格式
+- 对 `Prompt_Schema_v1.0.md` 全文重新排版：
+  - 使用分级标题（设计原则 / 五维控制 / RAG 使用规则 / 禁止事项 / 张力类型附录）。
+  - 所有 JSON 示例与 Schema 结构统一放入代码块，字段解释改为表格。
+  - 10 类张力类型统一用「定义 / 核心感受 / 代表结构 / 生成提示」四列表展示，便于查阅与后续实现映射。
+
+2. 生成协议明确
+- 在文档中强调：
+  - 五维独立：relation / form / intensity / hook / tone。
+  - 生成流程必须走 Plan → Write 双阶段（关系结构草图 + 钩子句/情绪峰值位置 → 严格按参数写，不偏离 tone、不增加未授权张力）。
+  - RAG 只允许服务 tone.base_style 与 form 结构模板，不得复制句子、拼贴内容或注入具体情节。
+
+
+二、RAG 库与 Node 检索接入
+
+1. 目录与约定
+- 在 v1.2 下新增 `rag/` 目录，并写入 `README.md`：
+  - `corpus/`：anchors.jsonl / anchors_ids.json / anchors_vectors.json（向量与 ids 同序），anchors.faiss 仅留给 Python 侧使用。
+  - `python/`：构建与检索脚本（build_rag.py、未来的 retrieve 服务）、requirements.txt。
+  - `client.js`：纯 Node 检索入口，读三份文件做向量余弦相似度检索。
+  - `scripts/verify.js`：上线前自测脚本，检查 corpus 文件是否存在并用 Node client 跑一次检索。
+- 在根 `.gitignore` 中增加 RAG 相关忽略项（python venv、__pycache__、大索引文件预留）。
+
+2. Node 检索实现
+- `rag/client.js`：
+  - 懒加载 anchors_ids.json、anchors.jsonl、anchors_vectors.json，构建 { ids, docsById, vectors }。
+  - 提供 `retrieve(queryVector, k, opts)`：按余弦相似度排序，支持按 style.form / style 过滤，返回 { id, text, style, score }。
+  - 提供 `getCorpus()`：用于自测与调试。
+- `rag/scripts/verify.js`：
+  - 运行方式：在 v1.2 下 `node rag/scripts/verify.js`，或在 rag 目录下 `node scripts/verify.js`。
+  - 若存在 anchors_vectors.json 与 client.js，则用首条向量作为 query 调一次 retrieve，输出样本结果。
+
+
+三、预生成脚本（Schema v1.0 对齐 + A/B 变体）
+
+1. 新增脚本
+- 位置：`backend/scripts/preseed_schema_v1.js`。
+- 功能：离线调用 DeepSeek，根据 Prompt Schema v1.0 的五维协议批量生成 seed 文本，直接写入 feed_pool 表，用于 Layer 1 刷流内容池扩容。
+- 运行方式（在 v1.2/backend 下）：
+  - 默认 AB 各 20 条：`node scripts/preseed_schema_v1.js`
+  - 只生成 A（有 RAG）若干条：`node scripts/preseed_schema_v1.js --variant=A --count=50`
+  - 只生成 B（无 RAG）若干条：`node scripts/preseed_schema_v1.js --variant=B --count=100`
+  - AB 自定义配比：`node scripts/preseed_schema_v1.js --variant=AB --countA=30 --countB=70`
+
+2. 五维 Schema 采样逻辑
+- relation（关系逻辑）：
+  - 从文档定义的 10 类张力类型中随机选 primary（不能爱 / 矛盾拉扯 / 反差 / 位阶张力 / 占有欲/吃醋 / 遗弃/等待 / 时间终止 / 伤害纠缠 / 行为悖论 / 情感留白）。
+  - 20% 概率附加 secondary，确保与 primary 不同，用于组合张力。
+- form（表达形式）：
+  - 在 single / dialogue / micro_scene / lyrical_blank 中随机采样。
+- intensity（强度）：
+  - 在 low / medium / high 中采样，并在脚本层强行禁止 high + lyrical_blank 组合（违反 Schema 禁止事项的组合不生成）。
+- hook（钩子机制）：
+  - 在 contrast / time_cut / behavioral_paradox / direct_confession 中采样。
+  - 为避免风格坍塌，脚本内部维护 lastHook，保证单次运行中不会连续两条使用同一 hook（落实「不得连续两次使用同一 hook」）。
+- tone（风格气质）：
+  - 固定 base_style='east_asian_subtle'。
+  - 冷度 / 克制度 / 具象度在推荐默认值附近做小幅随机扰动（例如 coldness_level ~ [0.4, 0.8]，restraint_level ~ [0.6, 0.9]，concreteness_level ~ [0.4, 0.7]），既保证整体语感稳定，又有轻微变化空间。
+
+3. Prompt 结构（Plan / Write）
+- System Prompt 中显式写入：
+  - 当前五维 Schema 参数（以 JSON 形式嵌入）。
+  - Plan 阶段：要求模型在内部先构思关系结构草图、钩子句位置、情绪峰值位置（不单独输出）。
+  - Write 阶段：严格按传入的 relation / form / intensity / hook / tone 写文本，禁止偏离 tone，禁止增加未授权张力类型，禁止解释动机与世界观设定。
+  - 按 form 与 hook 实现结构约束：single 仅一行钩子句；dialogue 以两人对话为主，句数 2–3 句；micro_scene 2–3 句微剧情；lyrical_blank 克制、无戏剧冲突，只用留白承载情绪。
+  - 输出格式只允许一个 JSON 对象 { "text": "..." }，其它全部禁止。
+
+4. A/B 变体定义
+- 共同点：
+  - 都按上述 Schema 采样逻辑与 Prompt 约束进行生成。
+  - 生成结果长度控制在约 40–100 字，超过 200 字的情况脚本会截断，以匹配 Layer 1 seed 的预期节奏。
+- B 变体（无 RAG）：
+  - 不加载 RAG 语料，完全依赖 Schema 控制的 prompt。
+  - 用于做「纯协议」下的 baseline seed。
+- A 变体（有 RAG）：
+  - 从 `rag/corpus/anchors.jsonl` 中随机抽取若干条文本（默认 3 条）作为圈层语感参考，并在 system prompt 中加入单独的 RAG 区块。
+  - RAG 区块只允许模型：
+    - 参考示例片段的语气、节奏、句长和留白方式。
+    - 对齐圈层语感（口语程度、代餐风格）。
+  - 明确禁止：
+    - 复制示例中的原句或连续 8 字以上片段。
+    - 复制其具体情节、设定或人物关系。
+    - 用示例补全剧情。
+  - 整体行为严格遵守 Schema 中「RAG 只服务气质与结构」的约定，确保不会把 RAG 变成内容拼贴。
+
+5. 数据写入与运行反馈
+- 数据库：
+  - 脚本内部直接连接 backend/logs/generation_logs.db，若 feed_pool 不存在则自动创建（与 server.js 中表结构保持一致）。
+  - 每条成功生成的文本通过 INSERT INTO feed_pool(text) 写入，用于 Layer 1 无限滑动内容池。
+- 日志输出：
+  - 控制台打印每条预生成的进度与前缀内容（变体类型 + 截断后的前 40 字），便于人工快速感知分布与质量。
+  - 对 DeepSeek 调用失败或生成文本为空/过短的情况，脚本会跳过写入并输出错误信息。
+

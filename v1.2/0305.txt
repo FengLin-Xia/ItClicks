@@ -1,0 +1,53 @@
+[2026-03-05] V1.2 后端调试接口 & 日志查看
+
+1）backend/server.js 新增 ADMIN_TOKEN 环境变量与 requireAdmin 中间件，用于保护管理类接口（未配置时默认放行，用于开发/自用）。
+2）新增只读调试接口：
+   - GET /admin/feed-preview：查看最新刷流内容（feed_pool），支持 ?limit（默认 20，最多 100）。
+   - GET /admin/last-logs：查看生成日志（generation_logs）概要，支持 ?limit（默认 50，最多 200）。
+   - GET /admin/last-events：查看埋点事件（events）概要，支持 ?limit（默认 100，最多 300）。
+3）建议部署时将容器内 /app/backend/logs 映射到宿主机持久目录（如 /data/itclicks/logs），以保证 SQLite 数据不会随容器销毁而丢失。
+
+---
+[2026-03-06] V1.2 前端改版（刷流页 + 底栏）
+
+1）标题区（这也能代）
+   - 去掉白底与底部分割线，背景透明，与页面融合。
+   - 内边距缩小、字号 20px→17px、颜色 #333→#666，并增加 letter-spacing，整体更轻。
+
+2）刷流改为一屏一卡
+   - 视口内只显示一张卡片，上下滑 / 滚轮切换；切换带 0.4s 缓动动画。
+   - 结构：.feed-viewport + .feed-deck + .feed-slide，每 slide 一卡；用 transform: translateY 实现滑动。
+   - JS：currentIndex / slideCount、goToSlide、buildSlides、refreshDeckLayout；滚轮与 touch 事件驱动切换；最后一张时向下滑可触发「加载更多」。
+
+3）本地加载与路径
+   - 脚本与链接改为相对路径：analytics.js、card-export.js、api/feed、customize.html、seed.html，便于直接打开或同源访问。
+   - 加载失败时提示「请先启动后端：在 v1.2/backend 下运行 node server.js」。
+   - backend/server.js 启动时打印可复制地址，如：It Clicks V1.2 已启动 → http://localhost:3000。
+
+4）滑动区与底栏拆分
+   - 滑动区只展示卡片正文（白卡 + 文案）；底部固定栏 .fixed-bar 不随卡片滑动。
+   - 底栏四个操作始终对应当前卡片：由 cardDataList 存每卡 id/text/ref，updateFixedBar() 随 currentIndex 更新链接与按钮数据。
+   - 视口高度改为 calc(100vh - 48px - 64px)，为底栏留出空间；底栏加 safe-area-inset-bottom。
+
+5）底栏按钮与埋点
+   - 四个按钮同一排、顺序：代不了 | 代一下！ | 复制文案 | 导出图片。「试试生成你的版本」改为「代一下！」。
+   - 代一下：灰色按钮 #5c5c5c，与其余三钮统一尺寸（padding 8px 14px、font-size 14px）。
+   - 复制、导出带透明度（opacity 0.82），悬停恢复；底栏无边框、背景透明，四个按钮屏幕居中（justify-content: center）。
+   - 新增「代不了」点踩按钮，埋点事件 dislike_seed，属性：seed_id、position（当前卡片序号）。
+
+6）涉及文件
+   - frontend/index.html：上述布局、样式与交互逻辑。
+   - backend/server.js：仅启动日志文案调整。
+
+7）导出图片水印
+   - frontend/card-export.js：水印「这也能代」由卡片右下角改为底部水平居中（measureText 取宽后按 (CARD_WIDTH - wmWidth)/2 绘制）。
+
+8）定制页「重新生成」与埋点
+   - frontend/customize.html：原「复制结果」按钮改为「重新生成」（id：regenerateBtn），点击时先发埋点再触发同一生成流程（submitBtn.click()）。
+   - 埋点事件 regenerate_customize，属性：request_id（上一轮生成）、input_length（当前输入字数），用于区分首次生成与重新生成。
+
+9）刷流页底部布局（避免与四按钮撞在一起）
+   - 最底部：文案改为「滚轮|下滑刷新」，新类 .footer-hint，fixed bottom: 0，链到 seed.html。
+   - 四主按钮 .fixed-bar：bottom 改为 calc(28px + safe-area)，压在文案上方。
+   - 「加载更多」：改为 fixed，放在四按钮上方（bottom: calc(76px + safe-area)）；仅当滑到当前批最后一张且 canLoadMore 时显示，由 updateLoadMoreVisibility() 在 goToSlide 与 loadFeed 后统一控制。
+

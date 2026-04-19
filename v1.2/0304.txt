@@ -1,0 +1,23 @@
+2026-03-04 改动记录（v1.2）
+
+1）生成侧（Layer 2 Schema Pipeline）
+- 新增 Prompt A 规则版抽取：backend/extract_schema.js（cp/situation/requested_style/schema 五维）。
+- 抽取 preseed 中的 Schema→Prompt 逻辑为公共模块：backend/schema_engine.js。
+- /api/customize 改为走 Schema Pipeline，并在 generation_logs 增加 schema_json 字段；events.generate_seed_result 透出 relation_primary/form/intensity/hook。
+- 为 /api/customize 增加可选 RAG 开关 use_rag，按 anchors.jsonl 注入语感片段。
+
+2）内容池与 RAG
+- 扩展 feed_pool 表结构：增加 relation_primary/relation_secondary/form/intensity/hook/tone_json/variant 字段。
+- 更新 scripts/preseed_schema_v1.js：插入时同步写入 Schema 字段，与 schema_engine.js 共用 Schema→Prompt 逻辑。
+- server 侧读取 v1.2/rag/corpus/anchors.jsonl，预留与 preseed 同源的 RAG 锚点。 
+
+3）feed 列表策略
+- /api/feed 支持 mode=random + exclude 参数：在不引入推荐算法的前提下按随机顺序取样，并尽量避开当前会话内已看过的 id。
+- frontend/index.html 中 feed 页调用 /api/feed?mode=random，前端维护 seenSeedIds，向后端传递最近已展示的 id 作为 exclude，避免单次刷流会话内重复曝光。
+
+4）文档与 checklist
+- 更新 0302_checklist.md：勾选 Layer 2 双 Prompt、feed_pool Schema 字段、RAG 轻接入、Schema 维度埋点与分析口径等条目，并补充分析口径说明。 
+
+5）刷流交互形态
+- frontend/index.html 调整为竖向 scroll-snap：body 使用 scroll-snap-type: y mandatory，单张卡片（.card）设置 scroll-snap-align:start，上下滑动时更接近单卡沉浸式体验。 
+

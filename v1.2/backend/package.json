@@ -1,0 +1,16 @@
+{
+  "name": "itclicks-backend",
+  "version": "1.2.0",
+  "description": "It Clicks V1.2 - 刷流 + 自定义生成",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test:rag": "node ../rag/scripts/verify.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "sqlite3": "^5.1.7"
+  }
+}

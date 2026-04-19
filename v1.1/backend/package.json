@@ -1,0 +1,15 @@
+{
+  "name": "itclicks-backend",
+  "version": "1.1.0",
+  "description": "It Clicks V1.1 - Relation-Driven AI Writing IDE",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "sqlite3": "^5.1.7"
+  }
+}

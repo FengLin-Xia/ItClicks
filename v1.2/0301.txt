@@ -1,0 +1,106 @@
+0301 记录
+
+一、导出卡片图功能改动记录
+
+1. 新增文件
+- frontend/card-export.js
+  - 作用：将任意文案渲染为一张卡片图（白底、圆角、阴影、自动换行），右下角水印「这也能代」，并触发 PNG 下载。
+  - 对外接口：window.exportCardImage(text, filename)
+  - 与页面卡片样式一致：宽度 560、内边距 28/32、字号 17、行高 2；水印 12px 灰色。
+
+2. 刷流页 index.html
+- 引入 <script src="/card-export.js"></script>
+- 每张卡片的 card-actions 增加「导出图片」按钮。
+- 点击后调用 exportCardImage(该卡片文案)，下载带水印的卡片图。
+
+3. 自定义结果页 customize.html
+- 引入 <script src="/card-export.js"></script>
+- 生成结果区域 .btns 内增加「导出图片」按钮。
+- 点击后调用 exportCardImage(当前生成结果文案)，下载带水印的卡片图。
+
+4. 约定
+- 刷流卡片、自定义结果页共用同一套「文本 → 卡片图 + 水印」逻辑，仅数据来源不同（卡片文案 vs 生成结果）。
+
+
+二、埋点：PRD 与实现差距讨论
+
+PRD 第 9 节「产品核心指标（MVP 阶段）」只写了 5 个指标的名称与优先级：
+1. 刷流停留时间
+2. 自定义点击率
+3. 自定义完成率
+4. 分享率
+5. 二次生成率
+
+PRD 没有细写的内容包括：
+- 各指标的操作定义：例如「自定义完成」是「提交生成」即算，还是「生成成功且用户看到结果」才算；「分享」是仅「导出图片」还是包含「复制文案」等。
+- 埋点事件：事件名、触发时机、附带参数（如 ref、是否成功）未定义。
+- 与现有接口的关系：后端已有 POST /api/log-action，请求体为 request_id + action；PRD 未说明这 5 个指标是否沿用 log-action、action 枚举如何扩展（如 custom_click、custom_done、share、regenerate），也未说明刷流停留时间如何采集（前端计时 + 离场/切页上报，还是仅后端无直接支持）。
+- 口径与存储：指标如何聚合（按日/按 session）、是否落库、是否需要在 generation_logs 或单独表中区分 type=feed|custom 等，PRD 均未写。
+
+结论：埋点部分 PRD 只给了「要看的指标名」，没有给「事件设计 + 口径定义 + 与后端对接方式」。若要实现 PRD 第 9 节，需要先补一小份埋点说明（事件列表、触发时机、与 log-action/日志表的对应关系），再开发。
+
+
+三、埋点 v0.1-impl 逐项实现记录（Tracking Plan v0.1-impl）
+
+1. 后端
+
+1.1 新增 events 表（SQLite）
+- 位置：backend/server.js initDatabase()
+- 字段：id, event, ts, user_id, device_id, session_id, page, app_version, platform, request_id, properties(TEXT/JSON), ua, ip, received_at
+
+1.2 新增 POST /track
+- 位置：backend/server.js
+- 行为：校验 event/ts/user_id/device_id/session_id/page/app_version/platform，服务端补 ua/ip，INSERT 一条 events，返回 204
+- 与 generation_logs 分离：仅写 events，不写 generation_logs
+
+1.3 /api/customize 改造
+- 每次请求生成 request_id（Date.now().toString(36)+random）
+- 成功：写入 generation_logs（logCustomizeGeneration：mode=customize, context_tail=ref, input_state={input}, writer_raw/parsed, final_text, response_time_ms）
+- 成功/失败均写一条 events：event=generate_seed_result，request_id，properties（status, response_time_ms, retry_count, mode, seed_id 等）
+- 响应增加 request_id：res.json({ text, request_id })
+
+1.4 新增 logCustomizeGeneration
+- 入参：requestId, userInput, refText, writerRaw, finalText, responseTimeMs
+- 行为：INSERT generation_logs，mode='customize'，op=null
+
+1.5 新增 insertEventServer(event, request_id, properties)
+- 服务端写 events 时无客户端身份，user_id/device_id 填 'server'，session_id 空，page='customize'
+
+1.6 /api/log-action 增强
+- 保持原有：UPDATE generation_logs SET user_action WHERE request_id
+- 成功后追加：insertEventServer('user_action', request_id, { action })
+
+2. 前端
+
+2.1 新增 frontend/analytics.js
+- device_id：localStorage 持久化（key: itclicks_device_id）
+- session_id：每次页面 load 新生成（不写 localStorage）
+- user_id：MVP = device_id
+- window.Analytics = { track, uuid, device_id, session_id }
+- track(event, properties, request_id) → POST /track，keepalive: true，失败不阻塞
+
+2.2 刷流页 index.html
+- 引入 analytics.js（在 card-export.js 前）
+- window.__PAGE__ = 'feed'
+- DOMContentLoaded：track('session_start', { referrer, entry_url })
+- 首屏 feed 加载完成后：track('view_page', { url })
+- 卡片：data-seed-id、data-position，renderCard(item, position)
+- view_seed：IntersectionObserver，阈值 0.6、可见≥600ms 后 track('view_seed', { seed_id, position })，同 session 同 seed_id 去重（seenSeeds）
+- scroll_depth：滚动监听，深度 10/25/50/75/90 各档 track 一次（scrollDepthSent）
+- 复制成功：track('copy_seed', { seed_id, copy_len })
+- 导出图片后：track('export_image', { seed_id })
+
+2.3 自定义页 customize.html
+- 引入 analytics.js
+- window.__PAGE__ = 'customize'；生成结果展示后改为 'result'
+- DOMContentLoaded：track('session_start', { referrer, entry_url })、track('view_page', { url })
+- 点击「生成」前：track('submit_customize', { input_length, mode: 'customize' })、track('generate_seed_attempt', { endpoint: '/api/customize', mode: 'customize', has_context_tail: !!ref })
+- 请求成功后存 lastRequestId，设 __PAGE__ = 'result'
+- 复制结果成功：track('copy_seed', { request_id: lastRequestId, copy_len }, lastRequestId)
+- 导出图片：track('export_image', { request_id: lastRequestId }, lastRequestId)
+
+3. 暂未实现（与 imp 一致）
+- collect_seed（无收藏功能）
+- click_regenerate（无「再来一条」）
+- share_seed（导出作为传播代理，已用 export_image）
+- click_customize（从 feed 点「试试生成你的版本」可后续加）

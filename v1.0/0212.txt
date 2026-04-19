@@ -1,0 +1,20 @@
+## 2025-02-12 更新记录
+
+### 修改内容：
+1. **删除 index.html 中的提示语**
+   - 移除了"不用设定，读就行。"这句话
+
+2. **画布页面改为自由画布（方案 B）**
+   - 将 `textarea` 改为 `contenteditable` div
+   - 移除了边框（`border: none`）
+   - 增加最小高度到 `70vh`，营造更自由的写作体验
+   - 背景色与页面一致（`#fafafa`），融为一体
+
+### 技术实现：
+- 使用 `contenteditable="true"` 属性实现可编辑 div
+- 实现光标位置获取（`getCaretPosition`）
+- 实现光标移动到末尾（`moveCaretToEnd`）
+- 支持 insert/rewrite 操作在 contenteditable 中正常工作
+
+### 部署状态：
+待部署到 Lighthouse

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>这也能代 v0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #fafafa;
+            color: #333;
+            line-height: 1.8;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 640px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 32px;
+        }
+
+        h1 {
+            font-size: 18px;
+            font-weight: 400;
+            color: #999;
+            letter-spacing: 0.5px;
+        }
+
+        .text-display {
+            background: #fff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.04);
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 17px;
+            line-height: 1.9;
+            color: #2c2c2c;
+            width: 100%;
+        }
+
+        .text-display.loading {
+            color: #ccc;
+        }
+
+        .input-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 100%;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 60px;
+            padding: 16px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            font-size: 15px;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+            font-family: inherit;
+            background: #fff;
+        }
+
+        textarea:focus {
+            border-color: #999;
+        }
+
+        textarea::placeholder {
+            color: #bbb;
+        }
+
+        button {
+            padding: 14px 28px;
+            background: #333;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        button:disabled {
+            background: #ddd;
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            text-align: center;
+            padding: 12px;
+            background: #fee;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>这也能代 v0</h1>
+
+        <div class="text-display" id="textDisplay">正在生成...</div>
+
+        <div class="input-area">
+            <textarea
+                id="promptInput"
+                placeholder="你可以只写一个名字或一个感觉"
+            ></textarea>
+            <button id="generateBtn" onclick="generateText()">继续生成</button>
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = 'sk-ca4c2eb63f964c53abc18f7c47b9a3d4';
+        const API_URL = 'https://api.deepseek.com/v1/chat/completions';
+
+        const textDisplay = document.getElementById('textDisplay');
+        const promptInput = document.getElementById('promptInput');
+        const generateBtn = document.getElementById('generateBtn');
+
+        let currentText = '';
+
+        // 系统提示词
+        const systemPrompt = `你是"引线式短文本生成器"。你的任务是生成一段能引起代入感的中文短文本。
+
+要求：
+1. 字数控制在 50-120 字之间
+2. 不出现明确剧情事件、角色心理结论、完整故事闭合
+3. 必须有：关系张力、时间/距离/未发生感
+4. 结尾保持悬停，停在"差一点发生"的位置
+5. 只输出文本，不要任何解释、总结、设定
+6. 不解释、不总结、不定设定
+7. 停在"差一点发生"的位置`;
+
+        // 页面加载时自动生成初段
+        window.onload = function() {
+            generateText(true);
+        };
+
+        async function generateText(isFirstTime = false) {
+            const userPrompt = isFirstTime ? '' : promptInput.value.trim();
+
+            if (!isFirstTime && !userPrompt && !currentText) {
+                return;
+            }
+
+            generateBtn.disabled = true;
+            textDisplay.classList.add('loading');
+            textDisplay.textContent = isFirstTime ? '正在生成...' : '正在生成...';
+
+            try {
+                const messages = [
+                    { role: 'system', content: systemPrompt }
+                ];
+
+                if (currentText) {
+                    messages.push({ role: 'user', content: `上一段文本：${currentText}\n\n用户输入（如果是空的请忽略）：${userPrompt || '（无）'}\n\n基于以上生成下一段短文本。` });
+                } else {
+                    messages.push({ role: 'user', content: '生成一段初段氛围文本。' });
+                }
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: messages,
+                        max_tokens: 200,
+                        temperature: 0.8
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API 请求失败: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const newText = data.choices[0].message.content.trim();
+
+                currentText = newText;
+                textDisplay.classList.remove('loading');
+                textDisplay.textContent = newText;
+
+                if (!isFirstTime) {
+                    promptInput.value = '';
+                }
+
+            } catch (error) {
+                console.error('生成失败:', error);
+                textDisplay.classList.remove('loading');
+                textDisplay.textContent = '生成失败，请重试';
+            } finally {
+                generateBtn.disabled = false;
+            }
+        }
+
+        // 回车发送（Ctrl+Enter 或 Cmd+Enter）
+        promptInput.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                generateText();
+            }
+        });
+    </script>
+</body>
+</html>

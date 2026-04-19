@@ -1,0 +1,214 @@
+2025-02-14 V1.1.3 Prompt架构重大更新
+
+1. 核心架构变更
+   - 从V1.1.2的"三维装配式系统"（Expression × Relation × Detail Anchor）
+     升级为"二维生成系统"（Tension Mode × Expression Form）
+   - 核心理念：从复杂的三维组合简化为更聚焦的二维系统
+
+2. Tension Mode（张力模式）- 核心驱动
+   - 3种模式，固定权重：
+     * core_action: 40% - 关系爆点，行为直接改变两人关系状态
+     * contrast: 30% - 预期差，第二句轻微违背第一句的自然推论
+     * suspended: 30% - 悬住型，第二句不解释不反转，只增加新的物理或情绪维度
+
+3. Expression Form（表达形式）- 外壳
+   - 3种模式，等概率：
+     * high_concept - 高概念句，可使用概念角色但必须落在具体行为上
+     * daily_scene - 生活片段，优先使用日常空间但不强制生活化
+     * emotional_line - 情绪宣言，可含一句对话但不可使用长段抒情
+
+4. 全局禁止规则（新增）
+   - 禁止人物概括性描述（会、总是、一向、向来等）
+   - 禁止外部职业或社会宏大设定
+   - 禁止解释行为动机
+   - 禁止总结关系状态
+   - 不超过三句
+
+5. 输出格式变更
+   - V1.1.2格式：
+     {
+       "text": "生成的文本",
+       "meta": {
+         "expression": "concept|daily_real|declaration",
+         "relation": "steady|relation|semantic_gap|...",
+         "detail_anchor": true,
+         "relation_state": { "polarity": ..., "initiative": "..." }
+       }
+     }
+   - V1.1.3格式：
+     {
+       "text": "生成的文本",
+       "meta": {
+         "tension_mode": "core_action|contrast|suspended",
+         "expression_form": "high_concept|daily_scene|emotional_line"
+       }
+     }
+   - 变更点：
+     * 移除expression/relation/detail_anchor三维维度
+     * 新增tension_mode和expression_form二维维度
+     * 移除relation_state（V1.1.3不再强制返回polarity和initiative）
+     * 更加简洁，聚焦于文本生成本身
+
+6. 后端代码修改
+   - 添加TENSION_MODES常量（3种模式及权重）
+   - 添加EXPRESSION_FORMS常量（3种形式）
+   - 添加TENSION_MODE_RULES常量（各模式规则）
+   - 添加EXPRESSION_FORM_RULES常量（各形式规则）
+   - 添加GLOBAL_RULES常量（全局禁止规则）
+   - 新增selectTensionMode()函数（固定权重选择）
+   - 新增selectExpressionForm()函数（等概率选择）
+   - 更新updateSessionState()函数（记录mode和form）
+   - 移除旧的三维选择函数和约束检查
+   - 更新/api/generate的seed模式Prompt组装逻辑
+   - 更新parseJSONResult()函数（兼容新旧格式）
+   - 更新返回格式（meta包含tension_mode和expression_form）
+   - 版本号更新为1.1.3
+
+7. Session状态管理变更
+   - 旧（V1.1.2）：
+     * lastSeedExpression
+     * lastSeedRelation
+     * lastDetailAnchor
+   - 新（V1.1.3）：
+     * lastSeedMode（记录tension_mode）
+     * lastSeedForm（记录expression_form）
+   - 简化状态管理，移除复杂的组合约束
+
+8. 与V1.1.2的主要差异
+   - 架构：从"三维装配式"简化为"二维生成"
+   - 驱动力：从Expression+Relation+Detail Anchor并行变为Tension Mode主导
+   - 约束：移除复杂的组合约束，使用固定权重
+   - 输出：移除relation_state等元数据，更加聚焦
+   - 设计理念：从"自然度×爽点×可读性平衡"变为"张力+表达清晰"
+   - 全局规则：新增禁止"会/总是/一向"等概括表达
+
+9. 设计目标对比
+   - V1.1.2目标：Expression决定语气、Relation决定结构、Detail Anchor决定身体感，三者组合形成自然度×爽点×可读性
+   - V1.1.3目标：Tension Mode驱动关系爆点/预期差/悬住感，Expression Form决定表达外壳，通过张力模式+表达形式的二维组合生成2-3句围绕两人关系、发生于一次具体片段、不解释的文本
+
+10. 文件变更
+    - backend/server.js: 完全重写Prompt系统、选择逻辑、返回格式
+    - 部署状态：容器已启动，正在等待npm install完成
+
+注意：V1.1.3已实现到代码并部署，等待npm install完成后可进行测试。
+
+---
+
+2025-02-14 V1.1 部署Bug修复 + Prompt V1.1.2架构设计（历史记录）
+
+1. 部署Bug修复
+   - 修复nginx代理配置问题：proxy_pass从 http://backend:3000/ 改为 http://backend:3000/api/
+   - 修复超时问题：
+     * callCritic函数添加30秒超时控制
+     * nginx增加所有超时设置到120秒（proxy_read_timeout、proxy_connect_timeout、proxy_send_timeout）
+     * Express添加120秒请求超时中间件
+   - 修复callCritic函数语法错误（try-catch结构问题）
+   - 成功部署到 http://43.140.208.227
+
+2. 文件变更（部署相关）
+   - v1.1/nginx.conf: 修复代理路径和增加超时配置
+   - v1.1/backend/server.js: 添加超时控制，修复语法错误
+   - 部署状态验证：后端、nginx、数据库均正常运行
+
+---
+
+2025-02-14 Prompt V1.1.2 设计文档更新
+
+1. 核心架构变更
+   - 从V1.1的"关系驱动型生成"升级为"Expression × Relation × Detail Anchor装配式生成系统"
+   - 三维生成结构：
+     * Expression Layer（表达层）：决定"怎么说"
+     * Relation Layer（关系结构层）：决定"说什么"
+     * Detail Anchor（细节锚点）：决定是否通过物理细节泄露情绪
+
+2. Expression Layer（表达层）
+   - 3种模式：
+     * concept（高概念短句）：气质压缩、对位、干净、克制
+     * daily_real（真实生活片段）：气质具体、自然、有身体、不戏剧化
+     * declaration（情绪化宣言）：气质直接、态度清晰、有冲击、少细节
+   - 权重：daily_real: 40%, concept: 35%, declaration: 25%
+
+3. Relation Layer（关系结构层）
+   - 6种模式（扩展自V1.1的4种）：
+     * steady（稳定型）：不反差、不断层、不极端
+     * relation（常规关系对位）：双方立场清晰
+     * semantic_gap（语义断层）：强烈行为与平静语气并置
+     * boundary（边界逼近）：暗示不可退让、有风险或代价
+     * daily_tension（日常张力）：小动作、微妙对抗、轻压迫
+     * persona_contrast（人设反差）：性格反差通过行为呈现（新增）
+   - 权重：steady: 25%, relation: 20%, daily_tension: 20%, semantic_gap: 15%, boundary: 10%, persona_contrast: 10%
+
+4. Detail Anchor（细节锚点机制）
+   - 概念：决定是否通过"具体物理细节"承载情绪
+   - 默认概率：50%
+   - 当detail_anchor=true时：
+     * 必须包含至少一个具体可感知的细节（动作、物件、数量、重复、顺序错位、轻微失误）
+     * 细节不解释情绪、不象征化、不明显服务情绪
+     * 例如结构类型：过度、重复、多余、轻微失误
+   - 当detail_anchor=false时：不强制细节，可以纯关系表达，不得因此变抽象化
+
+5. 输出格式变更
+   - V1.1格式：
+     {
+       "text": "生成文本",
+       "relation_state": {
+         "polarity": -2|0|2,
+         "initiative": "A|B|balanced",
+         "tags": ["标签1", "标签2"]
+       }
+     }
+   - V1.1.2格式：
+     {
+       "text": "生成文本",
+       "meta": {
+         "expression": "concept|daily_real|declaration",
+         "relation": "steady|relation|semantic_gap|boundary|daily_tension|persona_contrast",
+         "detail_anchor": true,
+         "relation_state": {
+           "polarity": -2|-1|0|1|2,
+           "initiative": "A|B|balanced"
+         }
+       }
+     }
+   - 变更点：
+     * 新增expression字段（3种）
+     * 新增relation字段（6种，替代原tags）
+     * 新增detail_anchor字段（布尔值）
+     * relation_state中polarity支持中间值-1和1
+     * 移除tags字段（由relation替代）
+
+6. 组合约束规则
+   - 不允许declaration + boundary + semantic_gap同时出现
+   - 若上一条为semantic_gap且detail_anchor=true，则下一条降低semantic_gap权重
+   - 不允许连续两条expression相同
+
+7. 总体设计目标变更
+   - V1.1目标：生成"可投射的关系结构"
+   - V1.1.2目标：
+     * 保持自然度
+     * 避免句式套路
+     * 避免反差过度
+     * 保持可投射性
+     * 控制"干"与"设计感"
+   - 系统分布策略：
+     * 不是每条都狠、每条都反差、每条都断层
+     * 而是自然分布、偶尔出现记忆点、多数文本可投射、少数文本成为爽点
+
+8. 设计核心总结
+   - V1.1：关系原型 + 关系操作 + 结构化状态输出
+   - V1.1.2：Expression决定语气 + Relation决定结构 + Detail Anchor决定身体感
+   - 三者组合形成：自然度 × 爽点 × 可读性
+
+9. 与V1.1的主要差异
+   - 架构：从单一"关系驱动"升级为"三维装配式生成"
+   - 表达层：新增3种expression模式，控制"怎么说"
+   - 细节层：新增detail_anchor机制，控制身体感和自然度
+   - 关系层：从4种模式扩展到6种，权重更平衡
+   - 输出：更丰富的元数据（expression/relation/detail_anchor）
+   - 目标：从"关系驱动"升级为"自然度 × 爽点 × 可读性"的平衡
+
+10. 文件变更
+    - prompt_spec_v1.1.2 add.md: 新增V1.1.2设计文档
+
+注意：V1.1.2尚未实现到代码中，当前部署版本仍使用V1.1 Prompt。
+

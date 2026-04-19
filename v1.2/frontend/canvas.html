@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画布 - It Clicks V1.2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #fafafa;
+            color: #333;
+            line-height: 1.8;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin: 0;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 40px;
+            border-bottom: 1px solid #e5e5e5;
+        }
+        .logo {
+            font-size: 18px;
+            font-weight: 400;
+            color: #333;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            padding-bottom: 280px;
+        }
+        .relation-viz {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 24px 40px;
+            background: #fff;
+            border-bottom: 1px solid #e5e5e5;
+        }
+        .polarity-bar { display: flex; align-items: center; gap: 12px; }
+        .polarity-label { font-size: 13px; color: #999; min-width: 40px; font-weight: 500; }
+        .polarity-track {
+            flex: 1;
+            height: 8px;
+            background: #e5e5e5;
+            border-radius: 4px;
+            position: relative;
+        }
+        .polarity-indicator {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: #333;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.3s ease;
+            box-shadow: 0 2px 8px rgba(51, 51, 51, 0.2);
+        }
+        .polarity-value { font-size: 13px; color: #333; font-weight: 500; min-width: 40px; text-align: right; }
+        .initiative-display { display: flex; align-items: center; gap: 20px; font-size: 14px; color: #666; }
+        .initiative-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #e5e5e5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .initiative-icon.active { background: #333; color: #fff; }
+        .initiative-balance { flex: 1; height: 2px; background: #e5e5e5; position: relative; display: flex; align-items: center; justify-content: center; }
+        .initiative-balance::after { content: '●'; color: #999; font-size: 12px; }
+        #editor {
+            width: 100%;
+            flex: 1;
+            padding: 40px;
+            border: none;
+            border-radius: 0;
+            font-size: 17px;
+            line-height: 2;
+            outline: none;
+            font-family: inherit;
+            background: #fafafa;
+            color: #2c2c2c;
+            min-height: 300px;
+        }
+        #editor:focus { outline: none; }
+        .operation-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 20px 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border-top: 1px solid #e5e5e5;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        .op-button {
+            padding: 14px 24px;
+            background: #fff;
+            color: #333;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .op-button:hover { background: #f5f5f5; border-color: #ccc; }
+        .op-button.primary { background: #333; color: #fff; border-color: #333; }
+        .op-button.primary:hover { background: #555; }
+        .op-button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .suggestion-card {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            max-width: 600px;
+            width: 90%;
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.12);
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 200;
+        }
+        .suggestion-card.visible { display: flex; }
+        .suggestion-text { font-size: 16px; line-height: 2; color: #2c2c2c; padding: 16px; background: #f9f9f9; border-radius: 8px; }
+        .suggestion-actions { display: flex; gap: 12px; justify-content: flex-end; }
+        .tags { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tag { padding: 6px 14px; background: #f5f5f5; color: #666; border-radius: 20px; font-size: 12px; }
+        .error { color: #e74c3c; font-size: 14px; padding: 12px; background: #fee; border-radius: 8px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo" onclick="goBack()">这也能代 · 画布</div>
+    </div>
+    <div class="main">
+        <div class="relation-viz">
+            <div class="polarity-bar">
+                <span class="polarity-label">极性</span>
+                <div class="polarity-track">
+                    <div class="polarity-indicator" id="polarityIndicator"></div>
+                </div>
+                <span class="polarity-value" id="polarityValue">0</span>
+            </div>
+            <div class="initiative-display">
+                <div class="initiative-icon" id="iconA">A</div>
+                <div class="initiative-balance"></div>
+                <div class="initiative-icon" id="iconB">B</div>
+            </div>
+            <div class="tags" id="tags"></div>
+        </div>
+        <div id="editor" contenteditable="true"></div>
+    </div>
+    <div class="operation-bar">
+        <button class="op-button" onclick="deepenRelation()" id="deepenBtn">压一层</button>
+        <button class="op-button" onclick="switchPerspective()" id="perspectiveBtn">换视角</button>
+        <button class="op-button" onclick="revealAttitude()" id="revealBtn">暴露一点</button>
+    </div>
+    <div class="suggestion-card" id="suggestionCard">
+        <div class="suggestion-text" id="suggestionText"></div>
+        <div class="suggestion-actions">
+            <button class="op-button" onclick="discardSuggestion()">放弃</button>
+            <button class="op-button primary" onclick="insertSuggestion()">插入</button>
+        </div>
+    </div>
+    <div class="error" id="errorDisplay"></div>
+    <script>
+        const API_URL = '/api/generate';
+        const SESSION_KEY = 'itclicks-v1.2-session';
+        const editor = document.getElementById('editor');
+        const polarityIndicator = document.getElementById('polarityIndicator');
+        const polarityValue = document.getElementById('polarityValue');
+        const iconA = document.getElementById('iconA');
+        const iconB = document.getElementById('iconB');
+        const tags = document.getElementById('tags');
+        const suggestionCard = document.getElementById('suggestionCard');
+        const suggestionText = document.getElementById('suggestionText');
+        const errorDisplay = document.getElementById('errorDisplay');
+        let currentSession = null;
+        let currentSuggestion = '';
+        let currentRelationState = null;
+        let isGenerating = false;
+        window.onload = function() {
+            const sessionData = localStorage.getItem(SESSION_KEY);
+            if (sessionData) {
+                currentSession = JSON.parse(sessionData);
+                editor.textContent = currentSession.text;
+                currentRelationState = currentSession.relationState;
+                displayRelationState(currentRelationState);
+                moveCaretToEnd(editor);
+            } else {
+                window.location.href = '/';
+            }
+        };
+        function displayRelationState(state) {
+            if (!state) return;
+            const polarityPercent = ((state.polarity + 2) / 4) * 100;
+            polarityIndicator.style.left = polarityPercent + '%';
+            polarityValue.textContent = state.polarity > 0 ? '+' + state.polarity : state.polarity;
+            if (state.initiative === 'A') { iconA.classList.add('active'); iconB.classList.remove('active'); }
+            else if (state.initiative === 'B') { iconB.classList.add('active'); iconA.classList.remove('active'); }
+            else { iconA.classList.remove('active'); iconB.classList.remove('active'); }
+            tags.innerHTML = (state.tags || []).map(function(tag) { return '<span class="tag">' + tag + '</span>'; }).join('');
+            currentSession.relationState = state;
+            saveSession();
+        }
+        function moveCaretToEnd(el) {
+            el.focus();
+            if (typeof window.getSelection !== 'undefined' && typeof document.createRange !== 'undefined') {
+                var range = document.createRange();
+                range.selectNodeContents(el);
+                range.collapse(false);
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+        function saveSession() {
+            currentSession.text = editor.textContent;
+            localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
+        }
+        function goBack() { window.location.href = '/'; }
+        function getTail(length) { length = length || 300; var text = editor.textContent || ''; return text.length <= length ? text : text.substring(text.length - length); }
+        async function deepenRelation() { await performOperation('deepen'); }
+        async function switchPerspective() { await performOperation('perspective'); }
+        async function revealAttitude() { await performOperation('reveal'); }
+        async function performOperation(op) {
+            if (isGenerating) return;
+            var tail = getTail();
+            isGenerating = true;
+            try {
+                var response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'relation_op',
+                        op: op,
+                        state: currentRelationState || { polarity: 0, initiative: 'balanced', tags: [] },
+                        context: { tail: tail }
+                    })
+                });
+                if (!response.ok) throw new Error('API 请求失败: ' + response.status);
+                var data = await response.json();
+                currentSuggestion = data.text.trim();
+                suggestionText.textContent = currentSuggestion;
+                suggestionCard.classList.add('visible');
+                if (data.relation_state) {
+                    currentRelationState = data.relation_state;
+                    displayRelationState(currentRelationState);
+                }
+            } catch (error) {
+                console.error('操作失败:', error);
+                showError('操作失败，请重试');
+            } finally {
+                isGenerating = false;
+            }
+        }
+        function insertSuggestion() {
+            if (!currentSuggestion) return;
+            var sel = window.getSelection();
+            var newNode;
+            if (sel.rangeCount > 0) {
+                newNode = document.createElement('div');
+                newNode.innerHTML = '<br><br>' + currentSuggestion;
+                var range = sel.getRangeAt(0);
+                range.deleteContents();
+                range.insertNode(newNode);
+            } else {
+                newNode = document.createElement('div');
+                newNode.innerHTML = '<br><br>' + currentSuggestion;
+                editor.appendChild(newNode);
+            }
+            discardSuggestion();
+            editor.focus();
+            moveCaretToEnd(editor);
+            saveSession();
+        }
+        function discardSuggestion() { currentSuggestion = ''; suggestionCard.classList.remove('visible'); }
+        function showError(message) {
+            errorDisplay.textContent = message;
+            errorDisplay.style.display = 'block';
+            setTimeout(function() { errorDisplay.style.display = 'none'; }, 3000);
+        }
+        editor.addEventListener('input', saveSession);
+    </script>
+</body>
+</html>

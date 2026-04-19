@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: itclicks_v1_1_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: node:18-alpine
+    container_name: itclicks_v1_1_backend
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "3000:3000"
+    command: sh -c "mkdir -p ./logs && npm install && node server.js"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
